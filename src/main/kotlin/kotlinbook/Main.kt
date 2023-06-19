@@ -1,14 +1,16 @@
 package kotlinbook
 
-import com.typesafe.config.Config
+import com.google.gson.Gson
 import com.typesafe.config.ConfigFactory
 import io.ktor.http.*
+import io.ktor.http.content.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.util.pipeline.*
 import org.slf4j.LoggerFactory
 import kotlin.random.Random
 import kotlin.reflect.full.declaredMemberProperties
@@ -98,6 +100,38 @@ fun main() {
     embeddedServer(Netty, port = appConfig.httpPort) { createKtorApplication() }.start(wait = true)
 }
 
+fun webResponse(handler: suspend PipelineContext<Unit, ApplicationCall>.() -> WebResponse): PipelineInterceptor<Unit, ApplicationCall> {
+    return {
+        val resp = this.handler()
+        for ((name, values) in resp.headers())
+            for (value in values)
+                call.response.header(name, value)
+        val statusCode = HttpStatusCode.fromValue(
+            resp.statusCode
+        )
+        when (resp) {
+            is TextWebResponse -> {
+                call.respondText(text = resp.body, status = statusCode)
+            }
+
+            is JsonWebResponse -> {
+                call.respond(KtorJsonWebResponse(body = resp.body, status = statusCode))
+            }
+        }
+
+    }
+}
+
+class KtorJsonWebResponse(val body: Any?, override val status: HttpStatusCode = HttpStatusCode.OK) :
+    OutgoingContent.ByteArrayContent() {
+    override val contentType: ContentType =
+        ContentType.Application.Json.withCharset(Charsets.UTF_8)
+
+    override fun bytes() =
+        Gson().toJson(body).toByteArray(charset = Charsets.UTF_8)
+
+}
+
 fun Application.createKtorApplication() {
     install(StatusPages) {
         exception<Throwable> { call, cause ->
@@ -108,8 +142,18 @@ fun Application.createKtorApplication() {
         }
     }
     routing {
-        get("/") {
-            call.respondText("Hello World")
-        }
+        get("/", webResponse {
+            TextWebResponse("Hello, World!")
+        })
+        get("/param_test", webResponse {
+            TextWebResponse("The param is: ${call.request.queryParameters["foo"]}")
+        })
+        get("/json_test", webResponse {
+            JsonWebResponse(mapOf("foo" to "bar"))
+        })
+        get("/json_test_header", webResponse {
+            JsonWebResponse(mapOf("foo" to "bar"))
+                .header("X-Test-Header", "Just a test!")
+        })
     }
 }

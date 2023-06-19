@@ -12,7 +12,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.util.pipeline.*
 import org.slf4j.LoggerFactory
-import kotlin.random.Random
 import kotlin.reflect.full.declaredMemberProperties
 
 data class WebappConfig(val httpPort: Int)
@@ -45,9 +44,6 @@ sealed class WebResponse {
             )
         )
 }
-
-fun String.getRandomLetter() =
-    this[Random.nextInt(this.length)]
 
 
 data class TextWebResponse(
@@ -97,7 +93,7 @@ fun main() {
             }.joinToString(separator = "\n")
     }"
     )
-    embeddedServer(Netty, port = appConfig.httpPort) { createKtorApplication() }.start(wait = true)
+    embeddedServer(Netty, port = appConfig.httpPort, module = Application::createKtorApplication).start(wait = true)
 }
 
 fun webResponse(handler: suspend PipelineContext<Unit, ApplicationCall>.() -> WebResponse): PipelineInterceptor<Unit, ApplicationCall> {

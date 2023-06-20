@@ -18,6 +18,7 @@ dependencies {
     implementation("io.ktor:ktor-server-netty:2.1.2")
     implementation("com.zaxxer:HikariCP:5.0.1")
     implementation("com.h2database:h2:2.1.214")
+    implementation("com.github.seratch:kotliquery:1.9.0")
     implementation("org.flywaydb:flyway-core:9.5.1")
     implementation("com.google.code.gson:gson:2.10")
     implementation("ch.qos.logback:logback-classic:1.4.4")

@@ -2,6 +2,7 @@ package kotlinbook
 
 import com.google.gson.Gson
 import com.typesafe.config.ConfigFactory
+import com.zaxxer.hikari.HikariDataSource
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.server.application.*
@@ -11,10 +12,17 @@ import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.util.pipeline.*
+import org.flywaydb.core.Flyway
 import org.slf4j.LoggerFactory
+import javax.sql.DataSource
 import kotlin.reflect.full.declaredMemberProperties
 
-data class WebappConfig(val httpPort: Int)
+data class WebappConfig(
+    val httpPort: Int,
+    val dbUser: String,
+    val dbPassword: String,
+    val dbUrl: String
+)
 
 
 sealed class WebResponse {
@@ -69,8 +77,30 @@ fun createAppConfig(env: String) =
         .withFallback(ConfigFactory.parseResources("app.conf"))
         .resolve()
         .let {
-            WebappConfig(httpPort = it.getInt("httpPort"))
+            WebappConfig(
+                httpPort = it.getInt("httpPort"),
+                dbPassword = it.getString("dbPassword"),
+                dbUrl = it.getString("dbUrl"),
+                dbUser = it.getString("dbUser")
+            )
         }
+
+fun createDataSource(config: WebappConfig) = HikariDataSource().apply {
+    jdbcUrl = config.dbUrl
+    username = config.dbUser
+    password = config.dbPassword
+}
+
+fun migrateDataSource(dataSource: DataSource) {
+    Flyway.configure()
+        .dataSource(dataSource)
+        .locations("db/migration")
+        .table("flyway_schema_history")
+        .load()
+        .migrate()
+}
+
+fun createAndMigrateDataSource(config: WebappConfig) = createDataSource(config).also(::migrateDataSource)
 
 private val log = LoggerFactory.getLogger("kotlinbook.Main")
 
@@ -80,6 +110,7 @@ fun main() {
     val env = System.getenv("KOTLIN_ENV") ?: "local"
     val appConfig = createAppConfig(env)
     val secretsRegex = "password|secret|key".toRegex(RegexOption.IGNORE_CASE)
+    val dataSource = createAndMigrateDataSource(appConfig)
 
     log.debug("Configuration loaded successfully: ${
         WebappConfig::class.declaredMemberProperties
@@ -93,6 +124,11 @@ fun main() {
             }.joinToString(separator = "\n")
     }"
     )
+    dataSource.connection.use { conn ->
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery("SELECT 1")
+        }
+    }
     embeddedServer(Netty, port = appConfig.httpPort, module = Application::createKtorApplication).start(wait = true)
 }
 

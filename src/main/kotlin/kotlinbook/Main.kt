@@ -7,13 +7,18 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.utils.io.core.*
+import kotliquery.queryOf
+import kotliquery.sessionOf
 import org.slf4j.LoggerFactory
+import javax.sql.DataSource
+import kotlin.io.use
 import kotlin.reflect.full.declaredMemberProperties
 
 
 private val log = LoggerFactory.getLogger("kotlinbook.Main")
 
-fun Application.createKtorApplication() {
+fun Application.createKtorApplication(dataSource: DataSource) {
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             kotlinbook.log.error("An unknown error occurred", cause)
@@ -36,8 +41,12 @@ fun Application.createKtorApplication() {
             JsonWebResponse(mapOf("foo" to "bar"))
                 .header("X-Test-Header", "Just a test!")
         })
+        get("/db_test", webResponseDb(dataSource) { dbSession ->
+            JsonWebResponse(dbSession.single(queryOf("SELECT 1"), ::mapFromRow))
+        })
     }
 }
+
 fun main() {
     log.debug("Starting the application...")
     val env = System.getenv("KOTLIN_ENV") ?: "local"
@@ -56,11 +65,11 @@ fun main() {
             }.joinToString(separator = "\n")
     }"
     )
-    dataSource.connection.use { conn ->
-        conn.createStatement().use { stmt ->
-            stmt.executeQuery("SELECT 1")
-        }
-    }
-    embeddedServer(Netty, port = appConfig.httpPort, module = Application::createKtorApplication).start(wait = true)
+    embeddedServer(
+        Netty,
+        port = appConfig.httpPort
+    ) {
+        createKtorApplication(dataSource)
+    }.start(wait = true)
 }
 

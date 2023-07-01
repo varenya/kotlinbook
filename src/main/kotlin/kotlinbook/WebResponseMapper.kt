@@ -4,6 +4,9 @@ import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.util.pipeline.*
+import kotliquery.Session
+import kotliquery.sessionOf
+import javax.sql.DataSource
 
 fun webResponse(handler: suspend PipelineContext<Unit, ApplicationCall>.() -> WebResponse): PipelineInterceptor<Unit, ApplicationCall> {
     return {
@@ -24,5 +27,14 @@ fun webResponse(handler: suspend PipelineContext<Unit, ApplicationCall>.() -> We
             }
         }
 
+    }
+}
+
+fun webResponseDb(
+    dataSource: DataSource,
+    handler: suspend PipelineContext<Unit, ApplicationCall>.(dbSession: Session) -> WebResponse
+) = webResponse {
+    sessionOf(dataSource, returnGeneratedKey = true).use { dbSession ->
+        handler(dbSession)
     }
 }
